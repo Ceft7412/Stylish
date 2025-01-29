@@ -4,9 +4,10 @@ import {useAuth} from '../context/AuthContext.tsx';
 import {GoogleSignin} from '@react-native-google-signin/google-signin';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
+import {getUserOnboardingStatus} from '../services/firestoreAuthServices.ts';
 
 export default function SocialAuths() {
-  const {signIn} = useAuth();
+  const {user, setUser, onboarding, setOnboarding, setError} = useAuth();
 
   const handleSignin = async () => {
     try {
@@ -22,18 +23,41 @@ export default function SocialAuths() {
       const googleCredential = auth.GoogleAuthProvider.credential(
         result.data?.idToken!,
       );
-      const user = result.data?.user;
-      const userDoc = await firestore().collection('users').doc(user?.id).get();
+      // Google Credential
+      console.log('googleCredential: ', googleCredential);
+
+      const userCredential = await auth().signInWithCredential(
+        googleCredential,
+      );
+      const user = userCredential.user;
+
+      console.log('hanldesigninuser: ', user);
+      const userDoc = await firestore()
+        .collection('users')
+        .doc(user?.uid)
+        .get();
+      console.log('userDoc', userDoc);
+      console.log('uid', user?.uid);
       if (!userDoc.exists) {
-        await firestore().collection('users').doc(user?.id).set({
-          name: user?.name,
+        await firestore().collection('users').doc(user?.uid).set({
+          name: user?.displayName,
           email: user?.email,
-          photoURL: user?.photo,
+          photoURL: user?.photoURL,
+          onBoarded: false,
         });
       }
-      return auth().signInWithCredential(googleCredential);
-    } catch (er) {
-      console.log(er);
+      if (user) {
+        const {success, onboardingComplete, error} =
+          await getUserOnboardingStatus(user.uid);
+        if (success) {
+          setOnboarding(onboardingComplete);
+        } else {
+          setError(error);
+        }
+      }
+      setUser(user);
+    } catch (er: any) {
+      setError(er.message);
     }
   };
 
